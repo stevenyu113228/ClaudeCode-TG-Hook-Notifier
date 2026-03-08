@@ -296,8 +296,15 @@ main() {
       error "Cannot send test: CLAUDE_HOOK_TG_BOT_TOKEN and CLAUDE_HOOK_TG_CHAT_ID must be set"
     else
       info "Sending test notification..."
-      echo '{"hook_event_name":"Notification","session_id":"test-install","cwd":"'"$(pwd)"'","notification_type":"idle_prompt","message":"Installation test — if you see this, the hook is working!","permission_mode":"default","transcript_path":"/tmp/test.jsonl"}' \
-        | "$HOOK_SCRIPT"
+      "$JQ" -n --arg cwd "$(pwd)" '{
+        hook_event_name: "Notification",
+        session_id: "test-install",
+        cwd: $cwd,
+        notification_type: "idle_prompt",
+        message: "Installation test — if you see this, the hook is working!",
+        permission_mode: "default",
+        transcript_path: "/tmp/test.jsonl"
+      }' | "$HOOK_SCRIPT"
       ok "Test notification sent! Check your Telegram."
     fi
   fi

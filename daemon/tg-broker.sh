@@ -5,6 +5,13 @@
 
 set -o pipefail
 
+# --- Require bash 4+ for associative arrays ---
+if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+  echo "ERROR: tg-broker.sh requires bash 4.0+ (found ${BASH_VERSION})" >&2
+  echo "  macOS: install via 'brew install bash'" >&2
+  exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=tg-broker-lib.sh
 source "${SCRIPT_DIR}/tg-broker-lib.sh"

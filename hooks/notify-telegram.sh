@@ -95,8 +95,8 @@ case "$HOOK_EVENT" in
     # Map notification_type to emoji and label
     case "$NOTIFICATION_TYPE" in
       permission_granted)
-        EMOJI="🔐"
-        LABEL="Permission Required"
+        EMOJI="🔓"
+        LABEL="Permission Granted"
         ;;
       idle_prompt)
         EMOJI="💤"
