@@ -54,7 +54,7 @@ fi
 
 # --- Metadata ---
 TIMESTAMP="$(date '+%Y-%m-%d %H:%M:%S')"
-HOSTNAME="$(hostname -s)"
+HOSTNAME="$(hostname -s 2>/dev/null || hostname)"
 PROJECT_NAME="$(basename "$CWD")"
 
 # --- HTML escape helper ---
@@ -85,6 +85,12 @@ case "$HOOK_EVENT" in
     NOTIFICATION_TYPE="$("$JQ" -r '.notification_type // "unknown"' <<< "$INPUT")"
     NOTIFICATION_MSG="$("$JQ" -r '.message // ""' <<< "$INPUT")"
     TOOL_NAME="$("$JQ" -r '.tool_name // ""' <<< "$INPUT")"
+
+    # Skip permission_prompt when interactive mode handles it
+    if [[ "$NOTIFICATION_TYPE" == "permission_prompt" && "${CLAUDE_HOOK_TG_INTERACTIVE:-}" == "true" ]]; then
+      # Handled by permission-telegram.sh, skip to avoid duplicate
+      exit 0
+    fi
 
     # Map notification_type to emoji and label
     case "$NOTIFICATION_TYPE" in

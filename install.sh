@@ -21,13 +21,15 @@ sed_inplace() {
   if sed --version &>/dev/null; then
     sed -i "$@"    # GNU sed (Linux)
   else
-    sed_inplace "$@" # BSD sed (macOS)
+    sed -i '' "$@" # BSD sed (macOS)
   fi
 }
 
 # --- Resolve script directory (handle symlinks) ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK_SCRIPT="${SCRIPT_DIR}/hooks/notify-telegram.sh"
+PERMISSION_HOOK_SCRIPT="${SCRIPT_DIR}/hooks/permission-telegram.sh"
+BROKER_SCRIPT="${SCRIPT_DIR}/daemon/tg-broker.sh"
 
 # --- Check dependencies ---
 check_deps() {
@@ -77,6 +79,8 @@ main() {
     exit 1
   fi
   chmod +x "$HOOK_SCRIPT"
+  chmod +x "$PERMISSION_HOOK_SCRIPT" 2>/dev/null || true
+  chmod +x "$BROKER_SCRIPT" 2>/dev/null || true
 
   # Configure Telegram credentials
   echo ""
@@ -157,12 +161,30 @@ main() {
     *) RC_FILE="$RC_CHOICE" ;;
   esac
 
+  # Ask about interactive (bidirectional) mode
+  echo ""
+  info "Enable bidirectional mode (approve/deny permissions via Telegram)?"
+  echo "  This allows you to remotely approve or deny Claude's permission requests"
+  echo "  via Telegram inline buttons instead of the terminal."
+  echo ""
+  echo "  Note: Only enable on ONE machine at a time (uses getUpdates polling)."
+  echo ""
+  local ENABLE_INTERACTIVE="false"
+  read -rp "Enable bidirectional mode on this machine? [y/N]: " INTERACTIVE_CHOICE
+  if [[ "$INTERACTIVE_CHOICE" == "y" || "$INTERACTIVE_CHOICE" == "Y" ]]; then
+    ENABLE_INTERACTIVE="true"
+    ok "Bidirectional mode will be enabled"
+  else
+    info "Bidirectional mode disabled (notification-only)"
+  fi
+
   if [[ "$RC_CHOICE" != "n" && "$RC_CHOICE" != "N" ]]; then
     # Remove old entries if present
     if grep -q 'CLAUDE_HOOK_TG_BOT_TOKEN' "$RC_FILE" 2>/dev/null; then
       sed_inplace '/# Claude Code — Telegram Hook/d' "$RC_FILE"
       sed_inplace '/CLAUDE_HOOK_TG_BOT_TOKEN/d' "$RC_FILE"
       sed_inplace '/CLAUDE_HOOK_TG_CHAT_ID/d' "$RC_FILE"
+      sed_inplace '/CLAUDE_HOOK_TG_INTERACTIVE/d' "$RC_FILE"
     fi
 
     {
@@ -170,9 +192,13 @@ main() {
       echo "# Claude Code — Telegram Hook"
       echo "export CLAUDE_HOOK_TG_BOT_TOKEN=\"${CURRENT_TOKEN}\""
       echo "export CLAUDE_HOOK_TG_CHAT_ID=\"${CURRENT_CHAT_ID}\""
+      echo "export CLAUDE_HOOK_TG_INTERACTIVE=\"${ENABLE_INTERACTIVE}\""
     } >> "$RC_FILE"
     ok "Credentials written to $RC_FILE"
   fi
+
+  # Export for current process
+  export CLAUDE_HOOK_TG_INTERACTIVE="$ENABLE_INTERACTIVE"
 
   # Export for current process (so test message works)
   export CLAUDE_HOOK_TG_BOT_TOKEN="$CURRENT_TOKEN"
@@ -221,7 +247,7 @@ main() {
     fi
   fi
 
-  # Build hook entry JSON
+  # Build notification hook entry JSON
   local HOOK_ENTRY
   HOOK_ENTRY="$("$JQ" -n --arg cmd "$HOOK_SCRIPT" '{
     "hooks": [{
@@ -232,13 +258,26 @@ main() {
     }]
   }')"
 
+  # Build permission hook entry JSON
+  local PERM_HOOK_ENTRY
+  PERM_HOOK_ENTRY="$("$JQ" -n --arg cmd "$PERMISSION_HOOK_SCRIPT" '{
+    "hooks": [{
+      "type": "command",
+      "command": $cmd,
+      "async": false,
+      "timeout": 600,
+      "statusMessage": "⏳ Waiting for Telegram approval..."
+    }]
+  }')"
+
   # Deep merge into settings
   local TEMP_FILE
   TEMP_FILE="$(mktemp)"
 
-  "$JQ" --argjson hook_entry "$HOOK_ENTRY" '
+  "$JQ" --argjson hook_entry "$HOOK_ENTRY" --argjson perm_entry "$PERM_HOOK_ENTRY" '
     .hooks.Notification = ((.hooks.Notification // []) + [$hook_entry] | unique_by(.hooks[0].command)) |
-    .hooks.Stop = ((.hooks.Stop // []) + [$hook_entry] | unique_by(.hooks[0].command))
+    .hooks.Stop = ((.hooks.Stop // []) + [$hook_entry] | unique_by(.hooks[0].command)) |
+    .hooks.PermissionRequest = ((.hooks.PermissionRequest // []) + [$perm_entry] | unique_by(.hooks[0].command))
   ' "$SETTINGS_FILE" > "$TEMP_FILE"
 
   mv "$TEMP_FILE" "$SETTINGS_FILE"

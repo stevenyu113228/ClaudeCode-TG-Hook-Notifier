@@ -48,7 +48,8 @@ remove_hooks() {
   local has_hook
   has_hook="$("$JQ" --arg cmd "$hook_script" '
     (.hooks.Notification // [] | any(.hooks[]?; .command == $cmd)) or
-    (.hooks.Stop // [] | any(.hooks[]?; .command == $cmd))
+    (.hooks.Stop // [] | any(.hooks[]?; .command == $cmd)) or
+    (.hooks.PermissionRequest // [] | any(.hooks[]?; .command == $cmd))
   ' "$settings_file")"
 
   if [[ "$has_hook" != "true" ]]; then
@@ -66,10 +67,15 @@ remove_hooks() {
     # Remove matching entries from Stop
     .hooks.Stop = ([.hooks.Stop // [] | .[] | select(.hooks | all(.command != $cmd))])
     |
+    # Remove matching entries from PermissionRequest
+    .hooks.PermissionRequest = ([.hooks.PermissionRequest // [] | .[] | select(.hooks | all(.command != $cmd))])
+    |
     # Clean up empty arrays
     if .hooks.Notification == [] then del(.hooks.Notification) else . end
     |
     if .hooks.Stop == [] then del(.hooks.Stop) else . end
+    |
+    if .hooks.PermissionRequest == [] then del(.hooks.PermissionRequest) else . end
     |
     # Clean up empty hooks object
     if .hooks == {} then del(.hooks) else . end
@@ -98,20 +104,41 @@ main() {
   local SCRIPT_DIR
   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   local HOOK_SCRIPT="${SCRIPT_DIR}/hooks/notify-telegram.sh"
+  local PERMISSION_HOOK_SCRIPT="${SCRIPT_DIR}/hooks/permission-telegram.sh"
+  local BROKER_SCRIPT="${SCRIPT_DIR}/daemon/tg-broker.sh"
+
+  # Stop broker daemon if running
+  if [[ -x "$BROKER_SCRIPT" ]]; then
+    info "Stopping broker daemon..."
+    "$BROKER_SCRIPT" stop 2>/dev/null || true
+  fi
+  # Clean up broker IPC directory
+  if [[ -d "/tmp/claude-tg-broker" ]]; then
+    rm -rf "/tmp/claude-tg-broker"
+    ok "Cleaned up broker IPC directory"
+  fi
 
   local removed=0
 
   # Check global settings
   local GLOBAL_SETTINGS="$HOME/.claude/settings.json"
   if remove_hooks "$GLOBAL_SETTINGS" "$JQ" "$HOOK_SCRIPT"; then
-    ok "Removed from global settings: $GLOBAL_SETTINGS"
+    ok "Removed notification hook from global settings"
+    removed=1
+  fi
+  if remove_hooks "$GLOBAL_SETTINGS" "$JQ" "$PERMISSION_HOOK_SCRIPT"; then
+    ok "Removed permission hook from global settings"
     removed=1
   fi
 
   # Check project settings
   local PROJECT_SETTINGS=".claude/settings.json"
   if remove_hooks "$PROJECT_SETTINGS" "$JQ" "$HOOK_SCRIPT"; then
-    ok "Removed from project settings: $PROJECT_SETTINGS"
+    ok "Removed notification hook from project settings"
+    removed=1
+  fi
+  if remove_hooks "$PROJECT_SETTINGS" "$JQ" "$PERMISSION_HOOK_SCRIPT"; then
+    ok "Removed permission hook from project settings"
     removed=1
   fi
 
@@ -132,6 +159,7 @@ main() {
         sed_inplace '/# Claude Code — Telegram Hook/d' "$RC_FILE"
         sed_inplace '/CLAUDE_HOOK_TG_BOT_TOKEN/d' "$RC_FILE"
         sed_inplace '/CLAUDE_HOOK_TG_CHAT_ID/d' "$RC_FILE"
+        sed_inplace '/CLAUDE_HOOK_TG_INTERACTIVE/d' "$RC_FILE"
         ok "Credentials removed from $RC_FILE"
         cleaned_rc=1
       fi
