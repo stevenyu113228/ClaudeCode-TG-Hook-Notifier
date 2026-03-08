@@ -3,7 +3,7 @@
 # Single getUpdates poller that bridges permission requests between hooks and Telegram.
 # Usage: tg-broker.sh start|stop|status
 
-set -uo pipefail
+set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=tg-broker-lib.sh
@@ -255,8 +255,8 @@ run_daemon() {
   ensure_broker_dirs
   load_state
 
-  # Load credentials
-  load_tg_credentials "."
+  # Load credentials from system env only (daemon is long-lived, cwd is unreliable)
+  # Project-level .claude/.env is NOT loaded here — hook passes credentials via env inheritance
   if [[ -z "${CLAUDE_HOOK_TG_BOT_TOKEN:-}" || -z "${CLAUDE_HOOK_TG_CHAT_ID:-}" ]]; then
     echo "ERROR: CLAUDE_HOOK_TG_BOT_TOKEN and CLAUDE_HOOK_TG_CHAT_ID must be set" >&2
     exit 1

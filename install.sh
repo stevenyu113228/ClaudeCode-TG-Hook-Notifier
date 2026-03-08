@@ -274,10 +274,11 @@ main() {
   local TEMP_FILE
   TEMP_FILE="$(mktemp)"
 
+  # Put new entry first so unique_by keeps the updated version (it keeps the first match)
   "$JQ" --argjson hook_entry "$HOOK_ENTRY" --argjson perm_entry "$PERM_HOOK_ENTRY" '
-    .hooks.Notification = ((.hooks.Notification // []) + [$hook_entry] | unique_by(.hooks[0].command)) |
-    .hooks.Stop = ((.hooks.Stop // []) + [$hook_entry] | unique_by(.hooks[0].command)) |
-    .hooks.PermissionRequest = ((.hooks.PermissionRequest // []) + [$perm_entry] | unique_by(.hooks[0].command))
+    .hooks.Notification = ([$hook_entry] + (.hooks.Notification // []) | unique_by(.hooks[0].command)) |
+    .hooks.Stop = ([$hook_entry] + (.hooks.Stop // []) | unique_by(.hooks[0].command)) |
+    .hooks.PermissionRequest = ([$perm_entry] + (.hooks.PermissionRequest // []) | unique_by(.hooks[0].command))
   ' "$SETTINGS_FILE" > "$TEMP_FILE"
 
   mv "$TEMP_FILE" "$SETTINGS_FILE"

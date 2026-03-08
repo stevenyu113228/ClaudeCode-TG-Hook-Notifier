@@ -112,13 +112,16 @@ case "$HOOK_EVENT" in
         ;;
     esac
 
-    # Build detail line
+    # Build detail line (tool_name takes priority, message appended if both present)
     DETAIL=""
-    if [[ -n "$NOTIFICATION_MSG" ]]; then
-      DETAIL="$(html_escape "$NOTIFICATION_MSG")"
-    fi
     if [[ -n "$TOOL_NAME" ]]; then
       DETAIL="Claude needs your permission to use <b>$(html_escape "$TOOL_NAME")</b>"
+      if [[ -n "$NOTIFICATION_MSG" ]]; then
+        DETAIL="${DETAIL}
+$(html_escape "$NOTIFICATION_MSG")"
+      fi
+    elif [[ -n "$NOTIFICATION_MSG" ]]; then
+      DETAIL="$(html_escape "$NOTIFICATION_MSG")"
     fi
 
     MESSAGE="${EMOJI} <b>Claude Code — ${LABEL}</b>

@@ -154,4 +154,5 @@ done
 
 # Timed out waiting — fall back to terminal prompt
 rm -f "${BROKER_REQUESTS_DIR}/${REQUEST_ID}.json"
+rm -f "${BROKER_PENDING_DIR}/${REQUEST_ID}.json"
 exit 0
